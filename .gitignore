@@ -12,3 +12,4 @@ pom.xml.asc
 .DS_Store
 resources/main.js
 resources/out
+/resources/www/main.js
