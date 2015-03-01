@@ -1,0 +1,22 @@
+/* css */
+
+html {
+  margin: 0;
+  padding: 0;
+  font-family: "Helvetica Neue";
+  font-weight: 100;
+  letter-spacing: 2pt;
+  background: #212021;
+}
+
+h1 {
+  font-weight: inherit;
+}
+
+canvas {
+  border: 1px solid black;
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  margin: 0;
+}
