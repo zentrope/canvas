@@ -2,7 +2,7 @@
   (:require-macros
    [cljs.core.async.macros :refer [go-loop]])
   (:require
-   [cljs.core.async :refer [chan <! put!]]))
+   [cljs.core.async :refer [chan <! put! sliding-buffer]]))
 
 (enable-console-print!)
 
@@ -195,7 +195,7 @@
   []
   (println "Welcome to the Canvas Scratch App.")
   (let [ctx (.getContext (by-id "canvas") "2d")
-        events (chan 1 control-stream)]
+        events (chan (sliding-buffer 10) control-stream)]
     (event-loop! state events)
     (listen! js/window   "resize"  #(resize! ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
