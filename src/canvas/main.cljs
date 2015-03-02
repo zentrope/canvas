@@ -1,6 +1,23 @@
-(ns canvas.main)
+(ns canvas.main
+  (:require-macros
+   [cljs.core.async.macros :refer [go-loop]])
+  (:require
+   [cljs.core.async :refer [chan <! put!]]))
 
 (enable-console-print!)
+
+;;-----------------------------------------------------------------------------
+;; Constants
+;;-----------------------------------------------------------------------------
+
+(def SCALE-W 800)
+(def SCALE-H 450)
+
+(def KEYBOARD
+  {40 :down
+   38 :up
+   37 :paddle-1
+   39 :paddle-2})
 
 ;;-----------------------------------------------------------------------------
 ;; DOM
@@ -22,14 +39,6 @@
 (defn listen!
   [el type fn]
   (.addEventListener el type fn false))
-
-;;-----------------------------------------------------------------------------
-;; Canvas Context
-;;-----------------------------------------------------------------------------
-
-(def ctx (.getContext (by-id "canvas") "2d"))
-(def SCALE-W 800)
-(def SCALE-H 450)
 
 ;;-----------------------------------------------------------------------------
 
@@ -106,10 +115,15 @@
 
 (extend-type Paddle
   IControllable
-  (control! [{:keys [y vy] :as paddle} event]
-    (case event
-      :up (assoc paddle :y (- y vy))
-      :down (assoc paddle :y (+ y vy))
+  (control! [{:keys [y vy height] :as paddle} event]
+    (condp = event
+      :up
+      (if (> (- y vy) 0) (assoc paddle :y (- y vy)) paddle)
+
+      :down
+      (if (< (+ y vy height) SCALE-H ) (assoc paddle :y (+ y vy)) paddle)
+
+      :else
       paddle)))
 
 ;;-----------------------------------------------------------------------------
@@ -118,10 +132,11 @@
 
 (def state
   ;; Order matters
-  (atom {:background (Rect. 0 0 SCALE-W SCALE-H "black")   ;; use div behind canvas
+  (atom {:current-paddle :paddle-1
+         :background (Rect. 0 0 SCALE-W SCALE-H "black")   ;; use div behind canvas
          :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2) ;; use div behind canvas
-         :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 2 "dodgerblue")
-         :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 2 "peru")
+         :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 "dodgerblue")
+         :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 "peru")
          :ball       (Ball. 400 225 13 3 2 "lime")}))
 
 ;;-----------------------------------------------------------------------------
@@ -140,17 +155,17 @@
   (swap! state #(assoc % :ball (move (:ball %)))))
 
 (defn animate!
-  []
+  [ctx]
   (move-phase!)
   (draw-phase! ctx)
-  (.requestAnimationFrame js/window animate!))
+  (.requestAnimationFrame js/window #(animate! ctx)))
 
 ;;-----------------------------------------------------------------------------
 ;; Control
 ;;-----------------------------------------------------------------------------
 
 (defn resize!
-  [e]
+  [ctx e]
   (let [w (- (.-innerWidth js/window) 40)
         h (- (int (/ (* w 9) 16)) 40)]
     (-> (by-id "canvas")
@@ -159,11 +174,36 @@
     (.scale ctx (/ w SCALE-W) (/ h SCALE-H))
     (draw-phase! ctx)))
 
+(defn- event-loop!
+  [state ch]
+  (go-loop []
+    (when-let [event (<! ch)]
+      (cond
+        (contains? #{:up :down} event)
+        (let [id (:current-paddle @state)
+              paddle (id @state)]
+          (swap! state assoc id (control! paddle event)))
+
+        (contains? #{:paddle-1 :paddle-2} event)
+        (swap! state assoc :current-paddle event)
+
+        :else
+        (println "Unhandled event:" event))
+      (recur))))
+
+(def control-stream
+  (comp (map #(or (get KEYBOARD %) :unknown))
+        (filter #(not= % :unknown))))
+
 (defn- main
   []
   (println "Welcome to the Canvas Scratch App.")
-  (listen! js/window "resize" resize!)
-  (resize! nil)
-  (animate!))
+  (let [ctx (.getContext (by-id "canvas") "2d")
+        events (chan 1 control-stream)]
+    (event-loop! state events)
+    (listen! js/window "resize" (partial resize! ctx))
+    (listen! js/document "keydown" #(put! events (.-keyCode %)))
+    (resize! ctx nil)
+    (animate! ctx)))
 
 (set! (.-onload js/window) main)
