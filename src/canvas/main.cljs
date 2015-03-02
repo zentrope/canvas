@@ -27,10 +27,6 @@
   [id]
   (.getElementById js/document id))
 
-(defn by-tag
-  [tag-name]
-  (aget (.getElementsByTagName js/document tag-name) 0))
-
 (defn attr!
   [el attr val]
   (aset el attr val)
@@ -69,7 +65,8 @@
     (.beginPath ctx)
     (.arc ctx x y radius 0 (* 2 js/Math.PI) false)
     (.fill ctx)
-    (.closePath ctx)))
+    (.closePath ctx)
+    ctx))
 
 (extend-type Rect
   IDrawable
@@ -165,7 +162,7 @@
 ;;-----------------------------------------------------------------------------
 
 (defn resize!
-  [ctx e]
+  [ctx]
   (let [w (- (.-innerWidth js/window) 40)
         h (- (int (/ (* w 9) 16)) 40)]
     (-> (by-id "canvas")
@@ -180,9 +177,8 @@
     (when-let [event (<! ch)]
       (cond
         (contains? #{:up :down} event)
-        (let [id (:current-paddle @state)
-              paddle (id @state)]
-          (swap! state assoc id (control! paddle event)))
+        (swap! state (fn [{id :current-paddle :as state}]
+                       (assoc state id (control! (id state) event))))
 
         (contains? #{:paddle-1 :paddle-2} event)
         (swap! state assoc :current-paddle event)
@@ -201,9 +197,9 @@
   (let [ctx (.getContext (by-id "canvas") "2d")
         events (chan 1 control-stream)]
     (event-loop! state events)
-    (listen! js/window "resize" (partial resize! ctx))
+    (listen! js/window   "resize"  #(resize! ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
-    (resize! ctx nil)
+    (resize! ctx)
     (animate! ctx)))
 
 (set! (.-onload js/window) main)
