@@ -20,6 +20,17 @@
    39 :paddle-2})
 
 ;;-----------------------------------------------------------------------------
+
+(defn sqr
+  [x]
+  (* x x))
+
+(defn dist
+  [x1 y1 x2 y2]
+  (js/Math.sqrt (+ (sqr (- x2 x1))
+                   (sqr (- y2 y1)))))
+
+;;-----------------------------------------------------------------------------
 ;; DOM
 ;;-----------------------------------------------------------------------------
 
@@ -36,6 +47,8 @@
   [el type fn]
   (.addEventListener el type fn false))
 
+;;-----------------------------------------------------------------------------
+;; Object Definitions
 ;;-----------------------------------------------------------------------------
 
 (defrecord Rect [x y width height color])
@@ -130,8 +143,10 @@
 (def state
   ;; Order matters
   (atom {:current-paddle :paddle-1
-         :background (Rect. 0 0 SCALE-W SCALE-H "black")   ;; use div behind canvas
-         :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2) ;; use div behind canvas
+         ;; use div behind canvas
+         :background (Rect. 0 0 SCALE-W SCALE-H "black")
+          ;; use div behind canvas
+         :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2)
          :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 "dodgerblue")
          :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 "peru")
          :ball       (Ball. 400 225 13 3 2 "lime")}))
@@ -141,35 +156,56 @@
 ;;-----------------------------------------------------------------------------
 
 (defn draw-phase!
-  [ctx]
+  [state ctx]
   (.clearRect ctx 0 0 SCALE-W SCALE-H)
-  (doseq [o (vals @state)]
-    (when (satisfies? IDrawable o)
-      (draw! o ctx))))
+  (doseq [object (vals @state)]
+    (when (satisfies? IDrawable object)
+      (draw! object ctx))))
 
 (defn move-phase!
-  []
-  (swap! state #(assoc % :ball (move (:ball %)))))
+  [{:keys [ball] :as state}]
+  (merge state {:ball (move ball)}))
 
-(defn animate!
-  [ctx]
-  (move-phase!)
-  (draw-phase! ctx)
-  (.requestAnimationFrame js/window #(animate! ctx)))
+(defn hit?
+  [ball paddle]
+  (let [{x1 :x y1 :y} paddle
+        x2 (+ x1 (:width paddle))
+        y2 (+ y1 (:height paddle))
+        {x :x y :y radius :radius} ball]
+    ;; janky when the ball hits a corner, I think.
+    (or (and (<= y1 y y2) (<= x1 x x2))
+        ;; Need to indicate if x or y direction is reversed
+        (and (<= y1 y y2) (or (>= radius (dist x2 y x y))
+                              (>= radius (dist x1 y x y))))
+        (and (<= x1 x x2) (or (>= radius (dist x y2 x y))
+                              (>= radius (dist x y1 x y)))))))
+
+(defn collision-phase!
+  [{:keys [ball paddle-1 paddle-2] :as state}]
+  (if (or (hit? ball paddle-1)
+          (hit? ball paddle-2))
+    (assoc state :ball (assoc ball :vx (* -1 (:vx ball))))
+    state))
+
+(defn animate-loop!
+  [state ctx]
+  (swap! state #(-> % move-phase! collision-phase!))
+  (draw-phase! state ctx)
+  (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
 ;;-----------------------------------------------------------------------------
 ;; Control
 ;;-----------------------------------------------------------------------------
 
 (defn resize!
-  [ctx]
+  [state ctx]
   (let [w (- (.-innerWidth js/window) 40)
         h (- (int (/ (* w 9) 16)) 40)]
     (-> (by-id "canvas")
         (attr! "width" w)
         (attr! "height" h))
     (.scale ctx (/ w SCALE-W) (/ h SCALE-H))
-    (draw-phase! ctx)))
+    (draw-phase! state ctx)))
 
 (defn- event-loop!
   [state ch]
@@ -197,9 +233,9 @@
   (let [ctx (.getContext (by-id "canvas") "2d")
         events (chan (sliding-buffer 10) control-stream)]
     (event-loop! state events)
-    (listen! js/window   "resize"  #(resize! ctx))
+    (listen! js/window   "resize"  #(resize! state ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
-    (resize! ctx)
-    (animate! ctx)))
+    (resize! state ctx)
+    (animate-loop! state ctx)))
 
 (set! (.-onload js/window) main)
