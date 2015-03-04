@@ -13,6 +13,14 @@
 (def SCALE-W 800)
 (def SCALE-H 450)
 
+(def PLAYER_1_COLOR "dodgerblue")
+(def PLAYER_2_COLOR "peru")
+
+(def SCORE_FONT "60px Helvetica")
+(def SCORE_COLOR "#555")
+
+(def BALL_COLOR "lime")
+
 (def KEYBOARD
   {40 :down
    38 :up
@@ -54,7 +62,8 @@
 (defrecord Rect [x y width height color])
 (defrecord Frame [x y width height color frame-width])
 (defrecord Paddle [x y width height vy color])
-(defrecord Ball [x y radius vx vy fill-color])
+(defrecord Ball [x y radius vx vy fill-color oob?])
+(defrecord Score [score x y font color])
 
 ;;-----------------------------------------------------------------------------
 ;; Drawable Objects
@@ -62,6 +71,15 @@
 
 (defprotocol IDrawable
   (draw! [_ ctx]))
+
+(extend-type Score
+  IDrawable
+  (draw! [{:keys [score x y font color] :as Score} ctx]
+    (aset ctx "font" font)
+    (aset ctx "fillStyle" color)
+    (aset ctx "textAlign" "center")
+    (.fillText ctx (str score) x y)
+    ctx))
 
 (extend-type Paddle
   IDrawable
@@ -110,11 +128,18 @@
 
 (extend-type Ball
   IMovable
-  (move [{:keys [x y vx vy radius] :as ball}]
-    (let [low radius
-          vx (if (< low x (- SCALE-W radius)) vx (* -1 vx))
-          vy (if (< low y (- SCALE-H radius)) vy (* -1 vy))]
-      (assoc ball :x (+ x vx) :y (+ y vy) :vx vx :vy vy))))
+  (move [{:keys [x y vx vy radius oob?] :as ball}]
+    (when-not oob?
+      (cond
+        (= x radius)
+        (assoc ball :oob? false :x -100)
+        ;;
+        (= x (- SCALE-W radius))
+        (assoc ball :oob? false :x (+ SCALE-W 100))
+        ;;
+        :else
+        (let [vy (if (< radius y (- SCALE-H radius)) vy (* -1 vy))]
+          (assoc ball :x (+ x vx) :y (+ y vy) :vy vy))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Controllable Objects
@@ -145,11 +170,17 @@
   (atom {:current-paddle :paddle-1
          ;; use div behind canvas
          :background (Rect. 0 0 SCALE-W SCALE-H "black")
-          ;; use div behind canvas
+         ;; use div behind canvas
+
          :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2)
-         :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 "dodgerblue")
-         :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 "peru")
-         :ball       (Ball. 400 225 13 3 2 "lime")}))
+
+         :score-1    (Score. 0 200 60 SCORE_FONT SCORE_COLOR)
+         :score-2    (Score. 0 (- SCALE-W 200) 60 SCORE_FONT SCORE_COLOR)
+
+         :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 PLAYER_1_COLOR)
+         :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 PLAYER_2_COLOR)
+
+         :ball       (Ball. 400 225 13 3 2 BALL_COLOR false)}))
 
 ;;-----------------------------------------------------------------------------
 ;; Animation
@@ -187,9 +218,31 @@
     (assoc state :ball (assoc ball :vx (* -1 (:vx ball))))
     state))
 
+(defn score-phase!
+  [{:keys [ball score-1 score-2] :as state}]
+  (if (<= 0 (:x ball) SCALE-W)
+    state
+    (let [{:keys [x vx radius]} ball
+          {score1 :score} score-1
+          {score2 :score} score-2
+          p1? (> x SCALE-W)
+          p2? (< x 0)
+          s1 (assoc score-1 :score (if p1? (inc score1) score1))
+          s2 (assoc score-2 :score (if p2? (inc score2) score2))
+          ball (cond
+                 p2? (assoc ball :x (- SCALE-W 25) :y (/ SCALE-H 2))
+                 p1? (assoc ball :x 25 :y (/ SCALE-H 2))
+                 :else ball)]
+      (assoc state :score-1 s1 :score-2 s2 :ball ball))))
+
 (defn animate-loop!
   [state ctx]
-  (swap! state #(-> % move-phase! collision-phase!))
+  ;; if start-mode:
+  ;; ...
+  ;; if play-mode:
+  (swap! state #(-> % move-phase! collision-phase! score-phase!))
+  ;; if win-mode:
+  ;; ...
   (draw-phase! state ctx)
   (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
