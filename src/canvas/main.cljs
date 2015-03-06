@@ -17,15 +17,17 @@
 (def PLAYER_2_COLOR "peru")
 
 (def SCORE_FONT "60px Helvetica")
-(def SCORE_COLOR "#555")
+(def SCORE_COLOR "slategray")
 
 (def BALL_COLOR "lime")
 
 (def KEYBOARD
-  {40 :down
-   38 :up
+  {27 :abort
+   32 :space
    37 :paddle-1
-   39 :paddle-2})
+   38 :up
+   39 :paddle-2
+   40 :down})
 
 ;;-----------------------------------------------------------------------------
 
@@ -60,10 +62,13 @@
 ;;-----------------------------------------------------------------------------
 
 (defrecord Rect [x y width height color])
+(defrecord Line [x1 y1 x2 y2 color])
 (defrecord Frame [x y width height color frame-width])
+
+(defrecord GameStartScreen [])
 (defrecord Paddle [x y width height vy color])
 (defrecord Ball [x y radius vx vy fill-color oob?])
-(defrecord Score [score x y font color])
+(defrecord Score [score x y font color align])
 
 ;;-----------------------------------------------------------------------------
 ;; Drawable Objects
@@ -72,52 +77,94 @@
 (defprotocol IDrawable
   (draw! [_ ctx]))
 
+(extend-type GameStartScreen
+  IDrawable
+  (draw! [_ ctx]
+    (.save ctx)
+    (aset ctx "textAlign" "center")
+    ;;
+    (aset ctx "font" "60px Helvetica")
+    (aset ctx "fillStyle" "peru")
+    (.fillText ctx "Welcome to Pong!" (/ SCALE-W 2) 100)
+    ;;
+    (aset ctx "font" "italic 14px Helvetica")
+    (aset ctx "fillStyle" "slategray")
+    (.fillText ctx "single player" (/ SCALE-W 2) 150)
+    ;;
+    (aset ctx "font" "20px Helvetica")
+    (aset ctx "fillStyle" "dodgerblue")
+    (.fillText ctx "Press the spacebar to start." (/ SCALE-W 2) 300)
+    ;;
+    (aset ctx "font" "italic 12px Helvetica")
+    (aset ctx "fillStyle" "slategray")
+    (.fillText ctx "[ Right ] and [ Left ] arrows to switch paddles." (/ SCALE-W 2) 370)
+    (.fillText ctx "[ Up ] and [ Down ] arrows to move paddles." (/ SCALE-W 2) 390)
+    (.fillText ctx "[ Spacebar ] to pause ." (/ SCALE-W 2) 410)
+    (.fillText ctx "[ Escape ] to quit." (/ SCALE-W 2) 430)
+    (.restore ctx)))
+
+(extend-type Line
+  IDrawable
+  (draw! [{:keys [x1 y1 x2 y2 color] :as line} ctx]
+    (.save ctx)
+    (aset ctx "lineWidth" "1")
+    (aset ctx "strokeStyle" color)
+    (.setLineDash ctx (array 1 2))
+    (.beginPath ctx)
+    (.moveTo ctx x1 y1)
+    (.lineTo ctx x2 y2)
+    (.stroke ctx)
+    (.closePath ctx)
+    (.restore ctx)))
+
 (extend-type Score
   IDrawable
-  (draw! [{:keys [score x y font color] :as Score} ctx]
+  (draw! [{:keys [score x y font color align]} ctx]
+    (.save ctx)
     (aset ctx "font" font)
     (aset ctx "fillStyle" color)
-    (aset ctx "textAlign" "center")
+    (aset ctx "textAlign" align)
     (.fillText ctx (str score) x y)
-    ctx))
+    (.restore ctx)))
 
 (extend-type Paddle
   IDrawable
-  (draw! [paddle ctx]
-    (let [{:keys [color x y width height]} paddle]
-      (aset ctx "fillStyle" color)
-      (.fillRect ctx x y width height))
-    ctx))
+  (draw! [{:keys [color x y width height]} ctx]
+    (.save ctx)
+    (aset ctx "fillStyle" color)
+    (.fillRect ctx x y width height)
+    (.restore ctx)))
 
 (extend-type Ball
   IDrawable
   (draw! [{:keys [x y radius fill-color] :as ball} ctx]
+    (.save ctx)
     (aset ctx "fillStyle" fill-color)
     (.beginPath ctx)
     (.arc ctx x y radius 0 (* 2 js/Math.PI) false)
     (.fill ctx)
     (.closePath ctx)
-    ctx))
+    (.restore ctx)))
 
 (extend-type Rect
   IDrawable
-  (draw! [rect ctx]
-    (let [{:keys [color x y width height]} rect]
-      (aset ctx "lineWidth" "0.5")
-      (aset ctx "fillStyle" color)
-      (aset ctx "strokeStyle" "black")
-      (.fillRect ctx x y width height)
-      (.strokeRect ctx x y width height))
-    ctx))
+  (draw! [{:keys [color x y width height]} ctx]
+    (.save ctx)
+    (aset ctx "lineWidth" "0.5")
+    (aset ctx "fillStyle" color)
+    (aset ctx "strokeStyle" "black")
+    (.fillRect ctx x y width height)
+    (.strokeRect ctx x y width height)
+    (.restore ctx)))
 
 (extend-type Frame
   IDrawable
-  (draw! [frame ctx]
-    (let [{:keys [color x y width height frame-width]} frame]
-      (aset ctx "lineWidth" (str frame-width))
-      (aset ctx "strokeStyle" color)
-      (.strokeRect ctx x y width height))
-    ctx))
+  (draw! [{:keys [color x y width height frame-width]} ctx]
+    (.save ctx)
+    (aset ctx "lineWidth" (str frame-width))
+    (aset ctx "strokeStyle" color)
+    (.strokeRect ctx x y width height)
+    (.restore ctx)))
 
 ;;-----------------------------------------------------------------------------
 ;; Moveable Objects
@@ -165,22 +212,22 @@
 ;; Game State
 ;;-----------------------------------------------------------------------------
 
-(def state
-  ;; Order matters
-  (atom {:current-paddle :paddle-1
-         ;; use div behind canvas
-         :background (Rect. 0 0 SCALE-W SCALE-H "black")
-         ;; use div behind canvas
+(def resets
+  {:background (Rect. 0 0 SCALE-W SCALE-H "black")
+   :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2)
+   :net        (Line. (/ SCALE-W 2) 0 (/ SCALE-W 2) SCALE-H SCORE_COLOR)
+   :game-start (GameStartScreen.)
+   :score-1    (Score. 0 (- (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "right")
+   :score-2    (Score. 0 (+ (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "left")
+   :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 PLAYER_1_COLOR)
+   :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 PLAYER_2_COLOR)
+   :ball       (Ball. 400 225 13 3 2 BALL_COLOR false)})
 
-         :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2)
-
-         :score-1    (Score. 0 200 60 SCORE_FONT SCORE_COLOR)
-         :score-2    (Score. 0 (- SCALE-W 200) 60 SCORE_FONT SCORE_COLOR)
-
-         :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 PLAYER_1_COLOR)
-         :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 PLAYER_2_COLOR)
-
-         :ball       (Ball. 400 225 13 3 2 BALL_COLOR false)}))
+(defonce state
+  (atom (merge resets
+               {:mode :game-start ;; game-start game-over playing
+                :pause? false
+                :current-paddle :paddle-1})))
 
 ;;-----------------------------------------------------------------------------
 ;; Animation
@@ -188,10 +235,26 @@
 
 (defn draw-phase!
   [state ctx]
+  ;;
+  ;; Always
   (.clearRect ctx 0 0 SCALE-W SCALE-H)
-  (doseq [object (vals @state)]
-    (when (satisfies? IDrawable object)
-      (draw! object ctx))))
+  (draw! (:background @state) ctx)
+  (draw! (:border @state) ctx)
+  ;;
+  ;; While playing and game-over
+  (when (contains? #{:playing :gameover} (:mode @state))
+    (draw! (:score-2 @state) ctx)
+    (draw! (:score-1 @state) ctx))
+  ;;
+  (when (contains? #{:game-start} (:mode @state))
+    (draw! (:game-start @state) ctx))
+  ;;
+  ;; While playing.
+  (when (contains? #{:playing} (:mode @state))
+    (draw! (:net @state) ctx)
+    (draw! (:paddle-1 @state) ctx)
+    (draw! (:paddle-2 @state) ctx)
+    (draw! (:ball @state) ctx)))
 
 (defn move-phase!
   [{:keys [ball] :as state}]
@@ -212,7 +275,7 @@
                               (>= radius (dist x y1 x y)))))))
 
 (defn collision-phase!
-  [{:keys [ball paddle-1 paddle-2] :as state}]
+  [{:keys [ball paddle-1 paddle-2 mode] :as state}]
   (if (or (hit? ball paddle-1)
           (hit? ball paddle-2))
     (assoc state :ball (assoc ball :vx (* -1 (:vx ball))))
@@ -237,13 +300,10 @@
 
 (defn animate-loop!
   [state ctx]
-  ;; if start-mode:
-  ;; ...
-  ;; if play-mode:
-  (swap! state #(-> % move-phase! collision-phase! score-phase!))
-  ;; if win-mode:
-  ;; ...
-  (draw-phase! state ctx)
+  (when-not (:pause? @state)
+    (when (= (:mode @state) :playing)
+      (swap! state #(-> % move-phase! collision-phase! score-phase!)))
+    (draw-phase! state ctx))
   (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
 ;;-----------------------------------------------------------------------------
@@ -266,11 +326,23 @@
     (when-let [event (<! ch)]
       (cond
         (contains? #{:up :down} event)
-        (swap! state (fn [{id :current-paddle :as state}]
-                       (assoc state id (control! (id state) event))))
+        (when-not (:pause? @state)
+          (swap! state (fn [{id :current-paddle :as state}]
+                         (assoc state id (control! (id state) event)))))
 
         (contains? #{:paddle-1 :paddle-2} event)
-        (swap! state assoc :current-paddle event)
+        (when-not (:pause? @state)
+          (swap! state assoc :current-paddle event))
+
+        (= :abort event)
+        (swap! state #(if (:pause? %)
+                        (assoc % :pause? false)
+                        (assoc % :mode :game-start)))
+
+        (= :space event)
+        (swap! state #(if (= (:mode %) :game-start)
+                        (merge % resets {:mode :playing})
+                        (assoc % :pause? (not (:pause? %)))))
 
         :else
         (println "Unhandled event:" event))
