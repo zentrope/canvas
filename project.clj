@@ -1,11 +1,11 @@
 (defproject com.zentrope/canvas "1"
-  :description "Play around with canvast stuff."
+  :description "Play around with canvas stuff."
   :url "https://zentrope.com"
   :license {:name "epl" :url "http://bit.ly/1EXoLjp"}
   :dependencies
   [[org.clojure/clojure "1.7.0-alpha5"]
    [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-   [org.clojure/clojurescript "0.0-2913"]]
+   [org.clojure/clojurescript "0.0-2985"]]
 
   :clean-targets
   ^{:protect false}
@@ -15,7 +15,7 @@
 
   :plugins
   [[lein-cljsbuild "1.0.5"]
-   [lein-ancient "0.6.3" :exclusions [org.clojure/clojure]]
+   [lein-ancient "0.6.4" :exclusions [org.clojure/clojure]]
    [cider/cider-nrepl "0.8.2"]]
 
   :cljsbuild
