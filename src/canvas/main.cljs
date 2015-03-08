@@ -281,9 +281,8 @@
         x2 (+ x1 (:width paddle))
         y2 (+ y1 (:height paddle))
         {x :x y :y radius :radius} ball]
-    ;; janky when the ball hits a corner, I think.
+    ;; janky depending on direction of ball
     (or (and (<= y1 y y2) (<= x1 x x2))
-        ;; Need to indicate if x or y direction is reversed
         (and (<= y1 y y2) (or (>= radius (dist x2 y x y))
                               (>= radius (dist x1 y x y))))
         (and (<= x1 x x2) (or (>= radius (dist x y2 x y))
@@ -293,7 +292,10 @@
   [{:keys [ball paddle-1 paddle-2 mode] :as state}]
   (if (or (hit? ball paddle-1)
           (hit? ball paddle-2))
-    (assoc state :ball (assoc ball :vx (* -1 (:vx ball))))
+    (let [{:keys [vx vy]} ball
+          vxf (if (< vx 0) dec inc)
+          vyf (if (< vy 0) dec inc)]
+      (assoc state :ball (assoc ball :vx (* -1 (vxf vx)) :vy (vyf vy))))
     state))
 
 (defn score-phase!
@@ -313,10 +315,9 @@
                        (>= score2 WIN_SCORE))
                  :game-over
                  (:mode state))
-          ball (cond
-                 p2? (assoc ball :x (- SCALE-W 25) :y (/ SCALE-H 2))
-                 p1? (assoc ball :x 25 :y (/ SCALE-H 2))
-                 :else ball)]
+          ball (if p2?
+                 (assoc ball :x (- SCALE-W 25) :y (/ SCALE-H 2) :vy -2 :vx -3)
+                 (assoc ball :x 25 :y (/ SCALE-H 2) :vy 2 :vx 3))]
       (assoc state :score-1 s1 :score-2 s2 :ball ball :mode mode))))
 
 (defn animate-loop!
