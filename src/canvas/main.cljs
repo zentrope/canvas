@@ -171,7 +171,6 @@
     (.closePath ctx)
     (.restore ctx)))
 
-
 ;;-----------------------------------------------------------------------------
 ;; Moveable Objects
 ;;-----------------------------------------------------------------------------
@@ -208,6 +207,19 @@
       :up   (if (> (- y vy) 0) (assoc paddle :y (- y vy)) paddle)
       :down (if (< (+ y vy height) SCALE-H ) (assoc paddle :y (+ y vy)) paddle)
       :else paddle)))
+
+(defprotocol IPositionable
+  (position! [_ y]))
+
+(extend-type Paddle
+  IPositionable
+  (position! [{:keys [y height] :as paddle} new-y]
+    (let [new-y (- new-y (/ height 2))
+          new-y (cond
+                  (< new-y 0) 0
+                  (> new-y (- SCALE-H height)) (- SCALE-H height)
+                  :else new-y)]
+      (assoc paddle :y new-y))))
 
 ;;-----------------------------------------------------------------------------
 ;; Game State
@@ -313,6 +325,9 @@
     (when (= (:mode @state) :playing)
       (swap! state #(-> % move-phase! collision-phase! score-phase!)))
     (draw-phase! state ctx))
+  ;; (set! (.-innerHTML (by-id "debug"))
+  ;;       (apply str (for [[k v] @state]
+  ;;                    (str k ": " (pr-str v) "<br/>"))))
   (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
 ;;-----------------------------------------------------------------------------
@@ -362,14 +377,42 @@
   (comp (map #(or (get KEYBOARD %) :unknown))
         (filter #(not= % :unknown))))
 
+(defn paddle-move!
+  [state e]
+  (when (and (= (:mode @state) :playing)
+             (not (nil? (:mouse-status @state))))
+    (let [t (.-target e)
+          w (- (.-innerWidth js/window) 40)
+          h (- (int (/ (* w 9) 16)) 40)
+          sh (/ h SCALE-H)
+          new-y (int (/ (- (.-clientY e) (.-offsetTop t)) sh))
+          paddle (:mouse-status @state)
+          object (get @state paddle)]
+      (swap! state assoc paddle (position! object new-y)))))
+
+(defn paddle-grab!
+  [state e]
+  (let [x (.-clientX e)
+        ww (/ (.-innerWidth js/window) 2)
+        status (if (>= x ww) :paddle-2 :paddle-1)]
+    (swap! state assoc :mouse-status status)))
+
+(defn paddle-release!
+  [state e]
+  (swap! state assoc :mouse-status nil))
+
 (defn- main
   []
-  (println "Welcome to the Canvas Scratch App.")
-  (let [ctx (.getContext (by-id "canvas") "2d")
+  (println "Welcome to Pong Single Player")
+  (let [canvas (by-id "canvas")
+        ctx (.getContext canvas "2d")
         events (chan (sliding-buffer 10) control-stream)]
     (event-loop! state events)
     (listen! js/window   "resize"  #(resize! state ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
+    (listen! canvas      "mousemove" #(paddle-move! state %))
+    (listen! canvas      "mousedown" #(paddle-grab! state %))
+    (listen! canvas      "mouseup" #(paddle-release! state %))
     (resize! state ctx)
     (animate-loop! state ctx)))
 
