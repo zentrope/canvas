@@ -12,6 +12,7 @@
 
 (def SCALE-W 800)
 (def SCALE-H 450)
+(def WIN_SCORE 5)
 
 (def PLAYER_1_COLOR "dodgerblue")
 (def PLAYER_2_COLOR "peru")
@@ -64,6 +65,7 @@
 (defrecord GameBackground [])
 (defrecord GameNet [])
 (defrecord GameStartScreen [])
+(defrecord GameOverScreen [])
 (defrecord Paddle [x y width height vy color])
 (defrecord Ball [x y radius vx vy fill-color oob?])
 (defrecord Score [score x y font color align])
@@ -125,6 +127,19 @@
     (.fillText ctx "[ Up ] and [ Down ] arrows to move paddles." (/ SCALE-W 2) 390)
     (.fillText ctx "[ Spacebar ] to pause ." (/ SCALE-W 2) 410)
     (.fillText ctx "[ Escape ] to quit." (/ SCALE-W 2) 430)
+    (.restore ctx)))
+
+(extend-type GameOverScreen
+  IDrawable
+  (draw! [_ ctx]
+    (.save ctx)
+    (aset ctx "textAlign" "center")
+    (aset ctx "font" "60px Helvetica")
+    (aset ctx "fillStyle" "peru")
+    (.fillText ctx "GAME OVER" (/ SCALE-W 2) 200)
+    (aset ctx "font" "20px Helvetica")
+    (aset ctx "fillStyle" "dodgerblue")
+    (.fillText ctx "Press the spacebar." (/ SCALE-W 2) 300)
     (.restore ctx)))
 
 (extend-type Score
@@ -202,6 +217,7 @@
   {:background (GameBackground.)
    :net        (GameNet.)
    :game-start (GameStartScreen.)
+   :game-over  (GameOverScreen.)
    :score-1    (Score. 0 (- (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "right")
    :score-2    (Score. 0 (+ (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "left")
    :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 PLAYER_1_COLOR)
@@ -226,9 +242,12 @@
   (draw! (:background @state) ctx)
   ;;
   ;; While playing and game-over
-  (when (contains? #{:playing :gameover} (:mode @state))
+  (when (contains? #{:playing :game-over} (:mode @state))
     (draw! (:score-2 @state) ctx)
     (draw! (:score-1 @state) ctx))
+  ;;
+  (when (contains? #{:game-over} (:mode @state))
+    (draw! (:game-over @state) ctx))
   ;;
   (when (contains? #{:game-start} (:mode @state))
     (draw! (:game-start @state) ctx))
@@ -274,13 +293,19 @@
           {score2 :score} score-2
           p1? (> x SCALE-W)
           p2? (< x 0)
-          s1 (assoc score-1 :score (if p1? (inc score1) score1))
-          s2 (assoc score-2 :score (if p2? (inc score2) score2))
+          score1 (if p1? (inc score1) score1)
+          score2 (if p2? (inc score2) score2)
+          s1 (assoc score-1 :score score1)
+          s2 (assoc score-2 :score score2)
+          mode (if (or (>= score1 WIN_SCORE)
+                       (>= score2 WIN_SCORE))
+                 :game-over
+                 (:mode state))
           ball (cond
                  p2? (assoc ball :x (- SCALE-W 25) :y (/ SCALE-H 2))
                  p1? (assoc ball :x 25 :y (/ SCALE-H 2))
                  :else ball)]
-      (assoc state :score-1 s1 :score-2 s2 :ball ball))))
+      (assoc state :score-1 s1 :score-2 s2 :ball ball :mode mode))))
 
 (defn animate-loop!
   [state ctx]
@@ -324,8 +349,9 @@
                         (assoc % :mode :game-start)))
 
         (= :space event)
-        (swap! state #(if (= (:mode %) :game-start)
-                        (merge % objects {:mode :playing})
+        (swap! state #(case (:mode %)
+                        :game-start (merge % objects {:mode :playing})
+                        :game-over (assoc % :mode :game-start)
                         (assoc % :pause? (not (:pause? %)))))
 
         :else
