@@ -61,10 +61,8 @@
 ;; Object Definitions
 ;;-----------------------------------------------------------------------------
 
-(defrecord Rect [x y width height color])
-(defrecord Line [x1 y1 x2 y2 color])
-(defrecord Frame [x y width height color frame-width])
-
+(defrecord GameBackground [])
+(defrecord GameNet [])
 (defrecord GameStartScreen [])
 (defrecord Paddle [x y width height vy color])
 (defrecord Ball [x y radius vx vy fill-color oob?])
@@ -76,6 +74,32 @@
 
 (defprotocol IDrawable
   (draw! [_ ctx]))
+
+(extend-type GameBackground
+  IDrawable
+  (draw! [_ ctx]
+    (.save ctx)
+    (aset ctx "lineWidth" "0.5")
+    (aset ctx "fillStyle" "black")
+    (.fillRect ctx 0 0 SCALE-W SCALE-H)
+    (aset ctx "lineWidth" "2")
+    (aset ctx "strokeStyle" "#333")
+    (.strokeRect ctx 0 0 SCALE-W SCALE-H)
+    (.restore ctx)))
+
+(extend-type GameNet
+  IDrawable
+  (draw! [- ctx]
+    (.save ctx)
+    (aset ctx "lineWidth" "1")
+    (aset ctx "strokeStyle" SCORE_COLOR)
+    (.setLineDash ctx (array 1 2))
+    (.beginPath ctx)
+    (.moveTo ctx (/ SCALE-W 2) 0)
+    (.lineTo ctx (/ SCALE-W 2) SCALE-H)
+    (.stroke ctx)
+    (.closePath ctx)
+    (.restore ctx)))
 
 (extend-type GameStartScreen
   IDrawable
@@ -101,20 +125,6 @@
     (.fillText ctx "[ Up ] and [ Down ] arrows to move paddles." (/ SCALE-W 2) 390)
     (.fillText ctx "[ Spacebar ] to pause ." (/ SCALE-W 2) 410)
     (.fillText ctx "[ Escape ] to quit." (/ SCALE-W 2) 430)
-    (.restore ctx)))
-
-(extend-type Line
-  IDrawable
-  (draw! [{:keys [x1 y1 x2 y2 color] :as line} ctx]
-    (.save ctx)
-    (aset ctx "lineWidth" "1")
-    (aset ctx "strokeStyle" color)
-    (.setLineDash ctx (array 1 2))
-    (.beginPath ctx)
-    (.moveTo ctx x1 y1)
-    (.lineTo ctx x2 y2)
-    (.stroke ctx)
-    (.closePath ctx)
     (.restore ctx)))
 
 (extend-type Score
@@ -146,25 +156,6 @@
     (.closePath ctx)
     (.restore ctx)))
 
-(extend-type Rect
-  IDrawable
-  (draw! [{:keys [color x y width height]} ctx]
-    (.save ctx)
-    (aset ctx "lineWidth" "0.5")
-    (aset ctx "fillStyle" color)
-    (aset ctx "strokeStyle" "black")
-    (.fillRect ctx x y width height)
-    (.strokeRect ctx x y width height)
-    (.restore ctx)))
-
-(extend-type Frame
-  IDrawable
-  (draw! [{:keys [color x y width height frame-width]} ctx]
-    (.save ctx)
-    (aset ctx "lineWidth" (str frame-width))
-    (aset ctx "strokeStyle" color)
-    (.strokeRect ctx x y width height)
-    (.restore ctx)))
 
 ;;-----------------------------------------------------------------------------
 ;; Moveable Objects
@@ -199,23 +190,17 @@
   IControllable
   (control! [{:keys [y vy height] :as paddle} event]
     (condp = event
-      :up
-      (if (> (- y vy) 0) (assoc paddle :y (- y vy)) paddle)
-
-      :down
-      (if (< (+ y vy height) SCALE-H ) (assoc paddle :y (+ y vy)) paddle)
-
-      :else
-      paddle)))
+      :up   (if (> (- y vy) 0) (assoc paddle :y (- y vy)) paddle)
+      :down (if (< (+ y vy height) SCALE-H ) (assoc paddle :y (+ y vy)) paddle)
+      :else paddle)))
 
 ;;-----------------------------------------------------------------------------
 ;; Game State
 ;;-----------------------------------------------------------------------------
 
-(def resets
-  {:background (Rect. 0 0 SCALE-W SCALE-H "black")
-   :border     (Frame. 0 0 SCALE-W SCALE-H "#333" 2)
-   :net        (Line. (/ SCALE-W 2) 0 (/ SCALE-W 2) SCALE-H SCORE_COLOR)
+(def objects
+  {:background (GameBackground.)
+   :net        (GameNet.)
    :game-start (GameStartScreen.)
    :score-1    (Score. 0 (- (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "right")
    :score-2    (Score. 0 (+ (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "left")
@@ -224,7 +209,7 @@
    :ball       (Ball. 400 225 13 3 2 BALL_COLOR false)})
 
 (defonce state
-  (atom (merge resets
+  (atom (merge objects
                {:mode :game-start ;; game-start game-over playing
                 :pause? false
                 :current-paddle :paddle-1})))
@@ -239,7 +224,6 @@
   ;; Always
   (.clearRect ctx 0 0 SCALE-W SCALE-H)
   (draw! (:background @state) ctx)
-  (draw! (:border @state) ctx)
   ;;
   ;; While playing and game-over
   (when (contains? #{:playing :gameover} (:mode @state))
@@ -341,7 +325,7 @@
 
         (= :space event)
         (swap! state #(if (= (:mode %) :game-start)
-                        (merge % resets {:mode :playing})
+                        (merge % objects {:mode :playing})
                         (assoc % :pause? (not (:pause? %)))))
 
         :else
