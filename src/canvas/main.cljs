@@ -57,7 +57,7 @@
 (defrecord GameStartScreen [])
 (defrecord GameOverScreen [])
 (defrecord Paddle [x y width height vy color])
-(defrecord Ball [x y radius vx vy fill-color oob?])
+(defrecord Ball [x y radius vx vy fill-color])
 (defrecord Score [score x y font color align])
 
 ;;-----------------------------------------------------------------------------
@@ -169,18 +169,17 @@
 
 (extend-type Ball
   IMovable
-  (move [{:keys [x y vx vy radius oob?] :as ball}]
-    (when-not oob?
-      (cond
-        (= x radius)
-        (assoc ball :oob? false :x -100)
-        ;;
-        (= x (- SCALE-W radius))
-        (assoc ball :oob? false :x (+ SCALE-W 100))
-        ;;
-        :else
-        (let [vy (if (< radius y (- SCALE-H radius)) vy (* -1 vy))]
-          (assoc ball :x (+ x vx) :y (+ y vy) :vy vy))))))
+  (move [{:keys [x y vx vy radius] :as ball}]
+    (cond
+      (= x radius)
+      (assoc ball :x -100)
+      ;;
+      (= x (- SCALE-W radius))
+      (assoc ball :x (+ SCALE-W 100))
+      ;;
+      :else
+      (let [vy (if (< radius y (- SCALE-H radius)) vy (* -1 vy))]
+        (assoc ball :x (+ x vx) :y (+ y vy) :vy vy)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Controllable Objects
@@ -212,7 +211,7 @@
    :score-2    (Score. 0 (+ MID_W 75) 60 SCORE_FONT SCORE_COLOR "left")
    :paddle-1   (Paddle. 10 (- SCALE-H 120) 10 100 10 PLAYER_1_COLOR)
    :paddle-2   (Paddle. (- SCALE-W 20) 10 10 100 10 PLAYER_2_COLOR)
-   :ball       (Ball. 400 225 13 3 2 "lime" false)})
+   :ball       (Ball. 400 225 13 3 2 "lime")})
 
 (defonce state
   (atom (merge objects
