@@ -6,9 +6,7 @@
 
 (enable-console-print!)
 
-;;-----------------------------------------------------------------------------
 ;; Constants
-;;-----------------------------------------------------------------------------
 
 (def SCALE-W 800)
 (def SCALE-H 450)
@@ -21,11 +19,9 @@
 (def SCORE_FONT "60px Helvetica")
 (def SCORE_COLOR "slategray")
 
-(def KEYBOARD
-  {27 :abort
-   32 :space})
+(def KEYBOARD {27 :abort 32 :space})
 
-;;-----------------------------------------------------------------------------
+;; Math
 
 (defn sqr
   [x]
@@ -36,9 +32,7 @@
   (js/Math.sqrt (+ (sqr (- x2 x1))
                    (sqr (- y2 y1)))))
 
-;;-----------------------------------------------------------------------------
 ;; DOM
-;;-----------------------------------------------------------------------------
 
 (defn by-id
   [id]
@@ -48,21 +42,17 @@
   [el type fn]
   (.addEventListener el type fn false))
 
-;;-----------------------------------------------------------------------------
 ;; Object Definitions
-;;-----------------------------------------------------------------------------
 
 (defrecord GameBackground [])
 (defrecord GameNet [])
 (defrecord GameStartScreen [])
 (defrecord GameOverScreen [])
-(defrecord Paddle [x y width height vy color])
+(defrecord Paddle [x y width height vy color side])
 (defrecord Ball [x y radius vx vy fill-color])
 (defrecord Score [score x y font color align])
 
-;;-----------------------------------------------------------------------------
 ;; Drawable Objects
-;;-----------------------------------------------------------------------------
 
 (defprotocol IDrawable
   (draw! [_ ctx]))
@@ -98,22 +88,18 @@
   (draw! [_ ctx]
     (.save ctx)
     (aset ctx "textAlign" "center")
-    ;;
     (aset ctx "font" "60px Helvetica")
     (aset ctx "fillStyle" "peru")
     (.fillText ctx "Welcome to Pong!" MID_W 100)
-    ;;
     (aset ctx "font" "italic 14px Helvetica")
     (aset ctx "fillStyle" "slategray")
     (.fillText ctx "single player" MID_W 150)
-    ;;
     (aset ctx "font" "20px Helvetica")
     (aset ctx "fillStyle" "dodgerblue")
     (.fillText ctx "Press the spacebar to start." MID_W 300)
-    ;;
     (aset ctx "font" "italic 12px Helvetica")
     (aset ctx "fillStyle" "slategray")
-    (.fillText ctx "Click and drag the mouse pointer near a paddle to move that paddle." MID_W 370)
+    (.fillText ctx "Click/drag the mouse near a paddle to move that paddle." MID_W 370)
     (.fillText ctx "[ Spacebar ] to pause ." MID_W 410)
     (.fillText ctx "[ Escape ] to quit." MID_W 430)
     (.restore ctx)))
@@ -160,9 +146,7 @@
     (.closePath ctx)
     (.restore ctx)))
 
-;;-----------------------------------------------------------------------------
 ;; Moveable Objects
-;;-----------------------------------------------------------------------------
 
 (defprotocol IMovable
   (move [_]))
@@ -171,19 +155,12 @@
   IMovable
   (move [{:keys [x y vx vy radius] :as ball}]
     (cond
-      (= x radius)
-      (assoc ball :x -100)
-      ;;
-      (= x (- SCALE-W radius))
-      (assoc ball :x (+ SCALE-W 100))
-      ;;
-      :else
-      (let [vy (if (< radius y (- SCALE-H radius)) vy (* -1 vy))]
-        (assoc ball :x (+ x vx) :y (+ y vy) :vy vy)))))
+      (= x radius) (assoc ball :x -100)
+      (= x (- SCALE-W radius)) (assoc ball :x (+ SCALE-W 100))
+      :else (let [vy (if (< radius y (- SCALE-H radius)) vy (* -1 vy))]
+              (assoc ball :x (+ x vx) :y (+ y vy) :vy vy)))))
 
-;;-----------------------------------------------------------------------------
 ;; Controllable Objects
-;;-----------------------------------------------------------------------------
 
 (defprotocol IPositionable
   (position! [_ y]))
@@ -198,9 +175,26 @@
                   :else new-y)]
       (assoc paddle :y new-y))))
 
-;;-----------------------------------------------------------------------------
+(defprotocol IHittable
+  (hit? [_ ball]))
+
+(extend-type Paddle
+  IHittable
+  (hit? [{x1 :x y1 :y w :width h :height side :side :as paddle}
+          {x :x y :y vx :vx radius :radius :as ball}]
+    (let [x2 (+ x1 w)
+        y2 (+ y1 h)]
+    (or (and (= side :right)
+             (<= y1 y y2)
+             (< vx 0)
+             (>= radius (dist x2 y x y)))
+        (and (= side :left)
+             (<= y1 y y2)
+             (> vx 0)
+             (>= radius (dist x1 y x y)))
+        false))))
+
 ;; Game State
-;;-----------------------------------------------------------------------------
 
 (def objects
   {:background (GameBackground.)
@@ -209,8 +203,8 @@
    :game-over  (GameOverScreen.)
    :score-1    (Score. 0 (- MID_W 75) 60 SCORE_FONT SCORE_COLOR "right")
    :score-2    (Score. 0 (+ MID_W 75) 60 SCORE_FONT SCORE_COLOR "left")
-   :paddle-1   (Paddle. 10 (- SCALE-H 120) 10 100 10 PLAYER_1_COLOR)
-   :paddle-2   (Paddle. (- SCALE-W 20) 10 10 100 10 PLAYER_2_COLOR)
+   :paddle-1   (Paddle. 10 (- SCALE-H 120) 10 100 10 PLAYER_1_COLOR :right)
+   :paddle-2   (Paddle. (- SCALE-W 20) 10 10 100 10 PLAYER_2_COLOR :left)
    :ball       (Ball. 400 225 13 3 2 "lime")})
 
 (defonce state
@@ -219,9 +213,7 @@
                 :pause? false
                 :current-paddle :paddle-1})))
 
-;;-----------------------------------------------------------------------------
 ;; Animation
-;;-----------------------------------------------------------------------------
 
 (defn draw-phase!
   [state ctx]
@@ -244,26 +236,10 @@
   [{:keys [ball] :as state}]
   (merge state {:ball (move ball)}))
 
-(defn hit?
-  [{x :x y :y vx :vx radius :radius :as ball}
-   {x1 :x y1 :y w :width h :height :as paddle}
-   dir]
-  (let [x2 (+ x1 w)
-        y2 (+ y1 h)]
-    (or (and (= dir :right)
-             (<= y1 y y2)
-             (< vx 0)
-             (>= radius (dist x2 y x y)))
-        (and (= dir :left)
-             (<= y1 y y2)
-             (> vx 0)
-             (>= radius (dist x1 y x y)))
-        false)))
-
 (defn collision-phase!
-  [{:keys [ball paddle-1 paddle-2 mode] :as state}]
-  (if (or (hit? ball paddle-1 :right)
-          (hit? ball paddle-2 :left))
+  [{:keys [ball paddle-1 paddle-2] :as state}]
+  (if (or (hit? paddle-1 ball)
+          (hit? paddle-2 ball))
     (let [{:keys [vx vy]} ball
           delta (rand-nth [0.3 0.5 0.7])
           vxf (if (< vx 0) dec inc)
@@ -284,8 +260,7 @@
           score2 (if p2? (inc score2) score2)
           s1 (assoc score-1 :score score1)
           s2 (assoc score-2 :score score2)
-          mode (if (or (>= score1 WIN_SCORE)
-                       (>= score2 WIN_SCORE))
+          mode (if (or (>= score1 WIN_SCORE) (>= score2 WIN_SCORE))
                  :game-over
                  (:mode state))
           ball (if p2?
@@ -301,9 +276,7 @@
     (draw-phase! state ctx))
   (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
-;;-----------------------------------------------------------------------------
 ;; Control
-;;-----------------------------------------------------------------------------
 
 (defn resize!
   [state ctx]
@@ -374,11 +347,11 @@
         ctx (.getContext canvas "2d")
         events (chan 1 key-stroke-stream)]
     (event-loop! state events)
-    (listen! js/window   "resize"    #(resize! state ctx))
-    (listen! js/document "keydown"   #(put! events (.-keyCode %)))
-    (listen! canvas      "mousemove" #(paddle-move! state %))
-    (listen! canvas      "mousedown" #(paddle-grab! state %))
-    (listen! canvas      "mouseup"   #(paddle-release! state %))
+    (listen! js/window "resize" #(resize! state ctx))
+    (listen! js/document "keydown" #(put! events (.-keyCode %)))
+    (listen! canvas "mousemove" #(paddle-move! state %))
+    (listen! canvas "mousedown" #(paddle-grab! state %))
+    (listen! canvas "mouseup" #(paddle-release! state %))
     (resize! state ctx)
     (animate-loop! state ctx)))
 
