@@ -12,6 +12,7 @@
 
 (def SCALE-W 800)
 (def SCALE-H 450)
+(def MID_W (/ SCALE-W 2))
 (def WIN_SCORE 5)
 
 (def PLAYER_1_COLOR "dodgerblue")
@@ -20,15 +21,9 @@
 (def SCORE_FONT "60px Helvetica")
 (def SCORE_COLOR "slategray")
 
-(def BALL_COLOR "lime")
-
 (def KEYBOARD
   {27 :abort
-   32 :space
-   37 :paddle-1
-   38 :up
-   39 :paddle-2
-   40 :down})
+   32 :space})
 
 ;;-----------------------------------------------------------------------------
 
@@ -97,8 +92,8 @@
     (aset ctx "strokeStyle" SCORE_COLOR)
     (.setLineDash ctx (array 1 2))
     (.beginPath ctx)
-    (.moveTo ctx (/ SCALE-W 2) 0)
-    (.lineTo ctx (/ SCALE-W 2) SCALE-H)
+    (.moveTo ctx MID_W 0)
+    (.lineTo ctx MID_W SCALE-H)
     (.stroke ctx)
     (.closePath ctx)
     (.restore ctx)))
@@ -111,22 +106,21 @@
     ;;
     (aset ctx "font" "60px Helvetica")
     (aset ctx "fillStyle" "peru")
-    (.fillText ctx "Welcome to Pong!" (/ SCALE-W 2) 100)
+    (.fillText ctx "Welcome to Pong!" MID_W 100)
     ;;
     (aset ctx "font" "italic 14px Helvetica")
     (aset ctx "fillStyle" "slategray")
-    (.fillText ctx "single player" (/ SCALE-W 2) 150)
+    (.fillText ctx "single player" MID_W 150)
     ;;
     (aset ctx "font" "20px Helvetica")
     (aset ctx "fillStyle" "dodgerblue")
-    (.fillText ctx "Press the spacebar to start." (/ SCALE-W 2) 300)
+    (.fillText ctx "Press the spacebar to start." MID_W 300)
     ;;
     (aset ctx "font" "italic 12px Helvetica")
     (aset ctx "fillStyle" "slategray")
-    (.fillText ctx "[ Right ] and [ Left ] arrows to switch paddles." (/ SCALE-W 2) 370)
-    (.fillText ctx "[ Up ] and [ Down ] arrows to move paddles." (/ SCALE-W 2) 390)
-    (.fillText ctx "[ Spacebar ] to pause ." (/ SCALE-W 2) 410)
-    (.fillText ctx "[ Escape ] to quit." (/ SCALE-W 2) 430)
+    (.fillText ctx "Click and drag the mouse pointer near a paddle to move that paddle." MID_W 370)
+    (.fillText ctx "[ Spacebar ] to pause ." MID_W 410)
+    (.fillText ctx "[ Escape ] to quit." MID_W 430)
     (.restore ctx)))
 
 (extend-type GameOverScreen
@@ -136,10 +130,10 @@
     (aset ctx "textAlign" "center")
     (aset ctx "font" "60px Helvetica")
     (aset ctx "fillStyle" "peru")
-    (.fillText ctx "GAME OVER" (/ SCALE-W 2) 200)
+    (.fillText ctx "GAME OVER" MID_W 200)
     (aset ctx "font" "20px Helvetica")
     (aset ctx "fillStyle" "dodgerblue")
-    (.fillText ctx "Press the spacebar." (/ SCALE-W 2) 300)
+    (.fillText ctx "Press the spacebar." MID_W 300)
     (.restore ctx)))
 
 (extend-type Score
@@ -197,17 +191,6 @@
 ;; Controllable Objects
 ;;-----------------------------------------------------------------------------
 
-(defprotocol IControllable
-  (control! [_ event]))
-
-(extend-type Paddle
-  IControllable
-  (control! [{:keys [y vy height] :as paddle} event]
-    (condp = event
-      :up   (if (> (- y vy) 0) (assoc paddle :y (- y vy)) paddle)
-      :down (if (< (+ y vy height) SCALE-H ) (assoc paddle :y (+ y vy)) paddle)
-      :else paddle)))
-
 (defprotocol IPositionable
   (position! [_ y]))
 
@@ -230,11 +213,11 @@
    :net        (GameNet.)
    :game-start (GameStartScreen.)
    :game-over  (GameOverScreen.)
-   :score-1    (Score. 0 (- (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "right")
-   :score-2    (Score. 0 (+ (/ SCALE-W 2) 75) 60 SCORE_FONT SCORE_COLOR "left")
-   :paddle-1   (Paddle. 20 (- SCALE-H 120) 20 100 10 PLAYER_1_COLOR)
-   :paddle-2   (Paddle. (- SCALE-W 40) 20 20 100 10 PLAYER_2_COLOR)
-   :ball       (Ball. 400 225 13 3 2 BALL_COLOR false)})
+   :score-1    (Score. 0 (- MID_W 75) 60 SCORE_FONT SCORE_COLOR "right")
+   :score-2    (Score. 0 (+ MID_W 75) 60 SCORE_FONT SCORE_COLOR "left")
+   :paddle-1   (Paddle. 10 (- SCALE-H 120) 10 100 10 PLAYER_1_COLOR)
+   :paddle-2   (Paddle. (- SCALE-W 20) 10 10 100 10 PLAYER_2_COLOR)
+   :ball       (Ball. 400 225 13 3 2 "lime" false)})
 
 (defonce state
   (atom (merge objects
@@ -276,22 +259,25 @@
   (merge state {:ball (move ball)}))
 
 (defn hit?
-  [ball paddle]
-  (let [{x1 :x y1 :y} paddle
-        x2 (+ x1 (:width paddle))
-        y2 (+ y1 (:height paddle))
-        {x :x y :y radius :radius} ball]
-    ;; janky depending on direction of ball
-    (or (and (<= y1 y y2) (<= x1 x x2))
-        (and (<= y1 y y2) (or (>= radius (dist x2 y x y))
-                              (>= radius (dist x1 y x y))))
-        (and (<= x1 x x2) (or (>= radius (dist x y2 x y))
-                              (>= radius (dist x y1 x y)))))))
+  [{x :x y :y vx :vx radius :radius :as ball}
+   {x1 :x y1 :y w :width h :height :as paddle}
+   dir]
+  (let [x2 (+ x1 w)
+        y2 (+ y1 h)]
+    (or (and (= dir :right)
+             (<= y1 y y2)
+             (< vx 0)
+             (>= radius (dist x2 y x y)))
+        (and (= dir :left)
+             (<= y1 y y2)
+             (> vx 0)
+             (>= radius (dist x1 y x y)))
+        false)))
 
 (defn collision-phase!
   [{:keys [ball paddle-1 paddle-2 mode] :as state}]
-  (if (or (hit? ball paddle-1)
-          (hit? ball paddle-2))
+  (if (or (hit? ball paddle-1 :right)
+          (hit? ball paddle-2 :left))
     (let [{:keys [vx vy]} ball
           vxf (if (< vx 0) dec inc)
           vyf (if (< vy 0) dec inc)]
@@ -350,35 +336,22 @@
   (go-loop []
     (when-let [event (<! ch)]
       (cond
-        (contains? #{:up :down} event)
-        (when-not (:pause? @state)
-          (swap! state (fn [{id :current-paddle :as state}]
-                         (assoc state id (control! (id state) event)))))
-
-        (contains? #{:paddle-1 :paddle-2} event)
-        (when-not (:pause? @state)
-          (swap! state assoc :current-paddle event))
-
         (= :abort event)
         (swap! state #(if (:pause? %)
                         (assoc % :pause? false)
                         (assoc % :mode :game-start)))
-
+        ;;
         (= :space event)
         (swap! state #(case (:mode %)
                         :game-start (merge % objects {:mode :playing})
                         :game-over (assoc % :mode :game-start)
                         (assoc % :pause? (not (:pause? %)))))
-
+        ;;
         :else
         (println "Unhandled event:" event))
       (recur))))
 
-(def control-stream
-  (comp (map #(or (get KEYBOARD %) :unknown))
-        (filter #(not= % :unknown))))
-
-(defn paddle-move!
+(defn- paddle-move!
   [state e]
   (when (and (= (:mode @state) :playing)
              (not (nil? (:mouse-status @state))))
@@ -391,23 +364,29 @@
           object (get @state paddle)]
       (swap! state assoc paddle (position! object new-y)))))
 
-(defn paddle-grab!
+(defn- paddle-grab!
   [state e]
+  (aset (.-style (by-id "canvas")) "cursor" "pointer")
   (let [x (.-clientX e)
         ww (/ (.-innerWidth js/window) 2)
         status (if (>= x ww) :paddle-2 :paddle-1)]
     (swap! state assoc :mouse-status status)))
 
-(defn paddle-release!
+(defn- paddle-release!
   [state e]
+  (aset (.-style (by-id "canvas")) "cursor" "default")
   (swap! state assoc :mouse-status nil))
+
+(def key-stroke-stream
+  (comp (map #(or (get KEYBOARD %) :unknown))
+        (filter #(not= % :unknown))))
 
 (defn- main
   []
   (println "Welcome to Pong Single Player")
   (let [canvas (by-id "canvas")
         ctx (.getContext canvas "2d")
-        events (chan (sliding-buffer 10) control-stream)]
+        events (chan 1 key-stroke-stream)]
     (event-loop! state events)
     (listen! js/window   "resize"  #(resize! state ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
