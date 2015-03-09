@@ -44,11 +44,6 @@
   [id]
   (.getElementById js/document id))
 
-(defn attr!
-  [el attr val]
-  (aset el attr val)
-  el)
-
 (defn listen!
   [el type fn]
   (.addEventListener el type fn false))
@@ -231,23 +226,15 @@
 
 (defn draw-phase!
   [state ctx]
-  ;;
-  ;; Always
   (.clearRect ctx 0 0 SCALE-W SCALE-H)
   (draw! (:background @state) ctx)
-  ;;
-  ;; While playing and game-over
   (when (contains? #{:playing :game-over} (:mode @state))
     (draw! (:score-2 @state) ctx)
     (draw! (:score-1 @state) ctx))
-  ;;
   (when (contains? #{:game-over} (:mode @state))
     (draw! (:game-over @state) ctx))
-  ;;
   (when (contains? #{:game-start} (:mode @state))
     (draw! (:game-start @state) ctx))
-  ;;
-  ;; While playing.
   (when (contains? #{:playing} (:mode @state))
     (draw! (:net @state) ctx)
     (draw! (:paddle-1 @state) ctx)
@@ -279,8 +266,9 @@
   (if (or (hit? ball paddle-1 :right)
           (hit? ball paddle-2 :left))
     (let [{:keys [vx vy]} ball
+          delta (rand-nth [0.3 0.5 0.7])
           vxf (if (< vx 0) dec inc)
-          vyf (if (< vy 0) dec inc)]
+          vyf (if (< vy 0) #(- % delta) #(+ % delta))]
       (assoc state :ball (assoc ball :vx (* -1 (vxf vx)) :vy (vyf vy))))
     state))
 
@@ -312,9 +300,6 @@
     (when (= (:mode @state) :playing)
       (swap! state #(-> % move-phase! collision-phase! score-phase!)))
     (draw-phase! state ctx))
-  ;; (set! (.-innerHTML (by-id "debug"))
-  ;;       (apply str (for [[k v] @state]
-  ;;                    (str k ": " (pr-str v) "<br/>"))))
   (.requestAnimationFrame js/window (partial animate-loop! state ctx)))
 
 ;;-----------------------------------------------------------------------------
@@ -324,10 +309,10 @@
 (defn resize!
   [state ctx]
   (let [w (- (.-innerWidth js/window) 40)
-        h (- (int (/ (* w 9) 16)) 40)]
-    (-> (by-id "canvas")
-        (attr! "width" w)
-        (attr! "height" h))
+        h (- (int (/ (* w 9) 16)) 40)
+        canvas (by-id "canvas")]
+    (aset canvas "width" w)
+    (aset canvas "height" h)
     (.scale ctx (/ w SCALE-W) (/ h SCALE-H))
     (draw-phase! state ctx)))
 
@@ -340,13 +325,11 @@
         (swap! state #(if (:pause? %)
                         (assoc % :pause? false)
                         (assoc % :mode :game-start)))
-        ;;
         (= :space event)
         (swap! state #(case (:mode %)
                         :game-start (merge % objects {:mode :playing})
                         :game-over (assoc % :mode :game-start)
                         (assoc % :pause? (not (:pause? %)))))
-        ;;
         :else
         (println "Unhandled event:" event))
       (recur))))
@@ -366,7 +349,7 @@
 
 (defn- paddle-grab!
   [state e]
-  (aset (.-style (by-id "canvas")) "cursor" "pointer")
+  (aset (.-style (by-id "canvas")) "cursor" "ns-resize")
   (let [x (.-clientX e)
         ww (/ (.-innerWidth js/window) 2)
         status (if (>= x ww) :paddle-2 :paddle-1)]
@@ -388,11 +371,11 @@
         ctx (.getContext canvas "2d")
         events (chan 1 key-stroke-stream)]
     (event-loop! state events)
-    (listen! js/window   "resize"  #(resize! state ctx))
-    (listen! js/document "keydown" #(put! events (.-keyCode %)))
+    (listen! js/window   "resize"    #(resize! state ctx))
+    (listen! js/document "keydown"   #(put! events (.-keyCode %)))
     (listen! canvas      "mousemove" #(paddle-move! state %))
     (listen! canvas      "mousedown" #(paddle-grab! state %))
-    (listen! canvas      "mouseup" #(paddle-release! state %))
+    (listen! canvas      "mouseup"   #(paddle-release! state %))
     (resize! state ctx)
     (animate-loop! state ctx)))
 
