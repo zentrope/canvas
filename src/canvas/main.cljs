@@ -315,21 +315,25 @@
     (.scale ctx (/ w SCALE-W) (/ h SCALE-H))
     (draw-phase! state ctx)))
 
+(defn- pause-or-abort!
+  [state]
+  (swap! state #(if (:pause? %)
+                  (assoc % :pause? false)
+                  (assoc % :mode :game-start))))
+
+(defn- pause-or-next!
+  [state]
+  (swap! state #(case (:mode %)
+                  :game-start (merge % objects {:mode :playing})
+                  :game-over (assoc % :mode :game-start)
+                  (assoc % :pause? (not (:pause? %))))))
 (defn- event-loop!
   [state ch]
   (go-loop []
     (when-let [event (<! ch)]
-      (cond
-        (= :abort event)
-        (swap! state #(if (:pause? %)
-                        (assoc % :pause? false)
-                        (assoc % :mode :game-start)))
-        (= :space event)
-        (swap! state #(case (:mode %)
-                        :game-start (merge % objects {:mode :playing})
-                        :game-over (assoc % :mode :game-start)
-                        (assoc % :pause? (not (:pause? %)))))
-        :else
+      (case event
+        :abort (pause-or-abort! state)
+        :space (pause-or-next! state)
         (println "Unhandled event:" event))
       (recur))))
 
