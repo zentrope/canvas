@@ -5,7 +5,7 @@
   :dependencies
   [[org.clojure/clojure "1.7.0-alpha5"]
    [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-   [org.clojure/clojurescript "0.0-3030"]]
+   [org.clojure/clojurescript "0.0-3053"]]
 
   :clean-targets
   ^{:protect false}
@@ -15,7 +15,7 @@
 
   :plugins
   [[lein-cljsbuild "1.0.5"]
-   [lein-ancient "0.6.4" :exclusions [org.clojure/clojure]]
+   [lein-ancient "0.6.5" :exclusions [org.clojure/clojure]]
    [cider/cider-nrepl "0.8.2"]]
 
   :cljsbuild
