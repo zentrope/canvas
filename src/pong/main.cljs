@@ -99,7 +99,7 @@
     (.fillText ctx "Press the spacebar to start." MID_W 300)
     (aset ctx "font" "italic 12px Helvetica")
     (aset ctx "fillStyle" "slategray")
-    (.fillText ctx "Click/drag the mouse near a paddle to move that paddle." MID_W 370)
+    (.fillText ctx "Position the mouse near a paddle to move that paddle." MID_W 370)
     (.fillText ctx "[ Spacebar ] to pause ." MID_W 410)
     (.fillText ctx "[ Escape ] to quit." MID_W 430)
     (.restore ctx)))
@@ -312,29 +312,17 @@
 
 (defn- paddle-move!
   [state e]
-  (when (and (= (:mode @state) :playing)
-             (not (nil? (:mouse-status @state))))
+  (when (= (:mode @state) :playing)
     (let [t (.-target e)
           w (- (.-innerWidth js/window) 40)
           h (- (int (/ (* w 9) 16)) 40)
           sh (/ h SCALE-H)
           new-y (int (/ (- (.-clientY e) (.-offsetTop t)) sh))
-          paddle (:mouse-status @state)
+          x (.-clientX e)
+          ww (/ (.-innerWidth js/window) 2)
+          paddle (if (>= x ww) :paddle-2 :paddle-1)
           object (get @state paddle)]
       (swap! state assoc paddle (position! object new-y)))))
-
-(defn- paddle-grab!
-  [state e]
-  (aset (.-style (by-id "canvas")) "cursor" "ns-resize")
-  (let [x (.-clientX e)
-        ww (/ (.-innerWidth js/window) 2)
-        status (if (>= x ww) :paddle-2 :paddle-1)]
-    (swap! state assoc :mouse-status status)))
-
-(defn- paddle-release!
-  [state e]
-  (aset (.-style (by-id "canvas")) "cursor" "default")
-  (swap! state assoc :mouse-status nil))
 
 (def key-stroke-stream
   (comp (map #(or (get KEYBOARD %) :unknown))
@@ -350,8 +338,6 @@
     (listen! js/window "resize" #(resize! state ctx))
     (listen! js/document "keydown" #(put! events (.-keyCode %)))
     (listen! canvas "mousemove" #(paddle-move! state %))
-    (listen! canvas "mousedown" #(paddle-grab! state %))
-    (listen! canvas "mouseup" #(paddle-release! state %))
     (resize! state ctx)
     (animate-loop! state ctx)))
 
