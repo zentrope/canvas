@@ -1,5 +1,5 @@
-(defproject com.zentrope/canvas "1"
-  :description "Play around with canvas stuff."
+(defproject com.zentrope/pong "1"
+  :description "Pong!"
   :url "https://zentrope.com"
   :license {:name "epl" :url "http://bit.ly/1EXoLjp"}
   :dependencies
