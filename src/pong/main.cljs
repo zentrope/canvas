@@ -300,6 +300,7 @@
                   :game-start (merge % objects {:mode :playing})
                   :game-over (assoc % :mode :game-start)
                   (assoc % :pause? (not (:pause? %))))))
+
 (defn- event-loop!
   [state ch]
   (go-loop []
